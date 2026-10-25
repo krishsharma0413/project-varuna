@@ -1,0 +1,121 @@
+# varuna fact checker: all services.
+#   docker compose up -d --build          → site on http://localhost:8080
+#   docker compose --profile local-mongo up -d --build   → also runs a local MongoDB for testing
+#
+# Services talk to each other only through Redis (job stream, log list); there are no internal
+# RPC or REST calls. config.yaml is read from the repo root, mounted read-only at /config.
+
+x-app: &app
+  build:
+    context: .
+    target: app
+  image: varuna-app
+  restart: unless-stopped
+  volumes:
+    - ./:/config:ro
+  depends_on:
+    redis-queue:
+      condition: service_healthy
+    redis-cache:
+      condition: service_healthy
+
+services:
+  # Queue, per-reel locks, rate limits, daily budget, log events. Never evicts; saved to disk.
+  redis-queue:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-queue-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Read cache. 200 MB in RAM, least-recently-used keys evicted first, nothing saved to disk.
+  redis-cache:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *app
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    ports:
+      - "127.0.0.1:8000:8000"   # for the Vite dev server; the site itself goes through `web`
+    volumes:
+      - ./:/config:ro
+      - logs-data:/data/logs    # the admin log viewer reads the SQLite file (opened read-only)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *app
+    build:
+      context: .
+      target: worker            # app image + headless Chromium for the Selenium search fallback
+    image: varuna-worker
+    # Fixed name = fixed job-queue consumer name, so a restarted worker resumes its unfinished jobs at once.
+    # If you ever run several worker containers, give each its own hostname.
+    hostname: varuna-worker
+    command: ["python", "-m", "app.worker.main"]
+    shm_size: 256mb             # Chromium needs more shared memory than Docker's 64 MB default
+    volumes:
+      - ./:/config:ro
+      - instaloader-session:/data/instaloader
+    depends_on:
+      redis-queue:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+
+  # Free self-hosted metasearch, the first search provider. Internal only (no published port).
+  searxng:
+    image: searxng/searxng:2026.9.29-4e2c1ea7f
+    restart: unless-stopped
+    volumes:
+      - ./deploy/searxng:/etc/searxng
+
+  logger:
+    <<: *app
+    command: ["python", "-m", "app.logsvc.main"]
+    volumes:
+      - ./:/config:ro
+      - logs-data:/data/logs
+
+  web:
+    build:
+      context: ./frontend
+    image: varuna-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+  # Optional local MongoDB for testing without Atlas: `--profile local-mongo`,
+  # then set mongo.uri to "mongodb://mongo:27017" in config.yaml.
+  mongo:
+    image: mongo:7.0
+    profiles: ["local-mongo"]
+    restart: unless-stopped
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  redis-queue-data:
+  instaloader-session:
+  logs-data:
+  mongo-data:

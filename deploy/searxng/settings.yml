@@ -1,0 +1,46 @@
+# SearXNG for varuna: an internal search backend, reachable only on the Docker network (no published port).
+# The worker asks for one engine at a time, in the order of `search.searxng.engines` in config.yaml.
+use_default_settings: true
+
+general:
+  instance_name: "varuna-search"
+  enable_metrics: false
+
+server:
+  # Only signs image-proxy URLs. Harmless while SearXNG isn't exposed; change it if you ever publish the port.
+  secret_key: "varuna-internal-searxng-not-exposed-change-if-published"
+  limiter: false
+  image_proxy: false
+  public_instance: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json
+  # How long SearXNG itself sidelines a blocked engine (defaults are a full day for CAPTCHAs).
+  suspended_times:
+    SearxEngineAccessDenied: 3600
+    SearxEngineCaptcha: 3600
+    SearxEngineTooManyRequests: 600
+    cf_SearxEngineCaptcha: 3600
+    cf_SearxEngineAccessDenied: 3600
+    recaptcha_SearxEngineCaptcha: 3600
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 12.0
+
+# Make sure every engine the worker may ask for is enabled (some ship disabled by default).
+engines:
+  - name: google
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: mojeek
+    disabled: false

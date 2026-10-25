@@ -1,0 +1,75 @@
+# Source credibility ranking: public and versioned, so anyone can see why a source sits where it
+# does and propose changes. Read on every check, so edits apply immediately.
+#
+# DRAFT: a starting point to review before launch. Only official domains, wire services and
+# fact-checkers are listed; news outlets still need to be ranked manually with a rationale each.
+# Unlisted domains get `verification.default_rank` from config.yaml.
+#
+# kind: primary (official documents) | wire | outlet | factcheck | other
+# Longest matching domain wins (sci.gov.in beats gov.in).
+
+version: 1
+
+ranks:
+  A: Primary documents and established wire services. Settle whether an order, rule or notice exists.
+  B: Established fact-checkers and outlets with a public corrections record.
+  C: Outlets with mixed records, or reporting that mostly relays other sources.
+  D: Unknown, anonymous or unranked sources. Never enough on their own.
+
+sources:
+  - domain: gov.in
+    rank: A
+    kind: primary
+    rationale: Government of India domains publish official notices, orders and gazettes. On contested political claims the government is one party, not the final word.
+  - domain: nic.in
+    rank: A
+    kind: primary
+    rationale: National Informatics Centre hosts official government sites.
+  - domain: sci.gov.in
+    rank: A
+    kind: primary
+    rationale: Supreme Court of India; judgments, orders and cause lists.
+  - domain: egazette.gov.in
+    rank: A
+    kind: primary
+    rationale: Official Gazette of India.
+  - domain: eci.gov.in
+    rank: A
+    kind: primary
+    rationale: Election Commission of India.
+  - domain: prsindia.org
+    rank: A
+    kind: primary
+    rationale: Tracks bills and their text as introduced and passed in Parliament.
+  - domain: ptinews.com
+    rank: A
+    kind: wire
+    rationale: Press Trust of India, national wire service.
+  - domain: reuters.com
+    rank: A
+    kind: wire
+    rationale: International wire service.
+  - domain: apnews.com
+    rank: A
+    kind: wire
+    rationale: International wire service.
+  - domain: pib.gov.in
+    rank: B
+    kind: factcheck
+    rationale: PIB Fact Check is the government's own fact-check unit; strong on whether official orders exist, a party on political claims.
+  - domain: altnews.in
+    rank: B
+    kind: factcheck
+    rationale: Independent fact-checker (verify current IFCN signatory status).
+  - domain: boomlive.in
+    rank: B
+    kind: factcheck
+    rationale: Independent fact-checker (verify current IFCN signatory status).
+  - domain: factly.in
+    rank: B
+    kind: factcheck
+    rationale: Independent fact-checker (verify current IFCN signatory status).
+  - domain: newschecker.in
+    rank: B
+    kind: factcheck
+    rationale: Independent fact-checker (verify current IFCN signatory status).

@@ -1,0 +1,224 @@
+# varuna fact checker configuration
+#
+# Copy this file to config.yaml (which is gitignored) and fill in the secrets.
+# The file is read fresh on every access, so edits apply without a restart.
+# Exceptions: mongo.uri and redis.* are only used when a connection is first opened,
+# so changing them needs `docker compose restart api worker logger`.
+# If a save leaves the file invalid (half-written, typo), the last valid version keeps
+# being used and the error is printed to the container logs.
+
+app:
+  name: varuna
+  public_base_url: "http://localhost:8080"
+
+network:
+  # The API trusts `client_ip_header` only when the request comes from one of these
+  # networks (Caddy inside Docker). Everything else uses the socket address.
+  trusted_proxy_cidrs: ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  client_ip_header: "X-Real-IP"
+
+auth:
+  google:
+    # OAuth 2.0 Web client ID from Google Cloud Console. Add every site origin
+    # (e.g. http://localhost:8080, http://localhost:5173) under "Authorized JavaScript origins".
+    client_id: "your-client-id.apps.googleusercontent.com"
+    client_secret: ""             # optional; the sign-in flow only needs client_id
+  jwt:
+    secret: "replace-with-a-long-random-string-of-at-least-32-characters"
+    algorithm: HS256
+    ttl_hours: 24
+    cookie_name: varuna_session
+    cookie_secure: false          # set true once the site is served over HTTPS
+  invited:
+    instagram:                    # used when invites move to the Instagram bot
+      - "instagram_handle1"
+      - "instagram_handle2"
+    mail:                         # Google accounts allowed to submit reels
+      - "mail1@xyz.com"
+      - "mail2@xyz.com"
+  admins:                         # Google accounts that can open the private logs page (/admin/logs);
+                                  # admins can always sign in and submit, even if not in invited.mail
+    - "you@example.com"
+
+mongo:
+  uri: "mongodb+srv://user:password@cluster0.example.mongodb.net/?retryWrites=true&w=majority"
+  database: varuna
+
+redis:
+  queue_url: "redis://redis-queue:6379/0"   # queue, locks, rate limits, log events (never evicts)
+  cache_url: "redis://redis-cache:6379/0"   # read cache (200 MB, least-recently-used eviction)
+
+cache:
+  ttl_seconds: 60                 # cached API reads
+  hero_ttl_seconds: 60
+
+rate_limits:                      # "N/second|minute|hour|day"; several rules per bucket are allowed
+  read: ["120/minute"]            # per IP
+  search: ["30/minute"]           # per IP
+  auth: ["10/minute"]             # per IP
+  jobs: ["60/minute"]             # per IP (job status polling)
+  dispute: ["3/hour"]             # per IP
+  submit: ["5/hour", "20/day"]    # per signed-in user
+
+budget:
+  daily_check_cap: 50             # new pipeline runs per UTC day, across all users
+
+pipeline:
+  lock_ttl_seconds: 900
+  max_video_seconds: 180
+  max_video_mb: 100
+  work_dir: /tmp/varuna-jobs
+  max_claims_per_reel: 6
+  frames:
+    intervals:                    # first row whose max_seconds >= reel length wins
+      - { max_seconds: 15, every: 0.5 }
+      - { max_seconds: 60, every: 1 }
+      - { max_seconds: 180, every: 2 }
+      - { max_seconds: 100000, every: 4 }
+    max_frames: 60
+    dedupe_distance: 6            # perceptual-hash distance below which frames count as duplicates
+    width: 720
+  ocr:
+    engine: vision                # vision (keyframes sent to the vision model) | none
+    max_frames: 8
+  transcription:
+    api: stt                      # stt = OpenRouter speech-to-text endpoint (Whisper) | chat = audio-capable chat model
+    language: ""                  # ISO-639-1 code like "hi" or "en"; empty = auto-detect (handles mixed Hindi/English)
+    chunk_seconds: 90
+
+downloader:
+  order: ["instaloader", "yt-dlp"]   # tried in order until one succeeds
+  timeout_seconds: 30             # per network request; the video download itself gets twice this
+  instaloader:
+    username: ""                  # throwaway account; never a personal one. No 2FA.
+    password: ""
+    session_dir: /data/instaloader
+    login_cooldown_minutes: 360   # after Instagram rejects a login, wait this long before trying again (yt-dlp is used meanwhile)
+  yt_dlp:
+    cookies_file: ""              # optional Netscape cookies.txt path inside the container
+
+openrouter:
+  api_key: ""
+  base_url: "https://openrouter.ai/api/v1"
+  timeout_seconds: 120
+  max_attempts: 3                 # tries per call on timeouts, rate limits (429) and server errors (5xx)
+  # OpenRouter model slugs: https://openrouter.ai/models. Low-cost models while the project runs on
+  # donations; switch to stronger ones as funding allows. Shown publicly on the /transparency page.
+  models:
+    small: "deepseek/deepseek-v4-flash"           # cleanup, claim extraction (text only)
+    strong: "deepseek/deepseek-v4-flash"          # verdicts and explanations (text only)
+    transcription: "openai/whisper-large-v3-turbo"  # with transcription.api: stt; use an audio-input chat model with api: chat
+    vision: "qwen/qwen3.7-flash"                  # on-screen text from keyframes; must accept image input
+    embedding: ""                                 # e.g. "openai/text-embedding-3-small"; empty = skip
+  # Reasoning ("thinking") effort per step: default (the model's own setting) | none | minimal | low |
+  # medium | high | xhigh | max. Thinking costs tokens and time; mechanical steps don't need it.
+  # Each model accepts only some values (deepseek-v4-flash: none, high, xhigh), so check the model page.
+  reasoning:
+    topic_gate: none
+    cleanup: none
+    claims: default
+    ocr: none
+    transcription: none           # only used with pipeline.transcription.api: chat
+    verdict: default
+  # One model is served by several providers through OpenRouter, and they differ (one returned a single
+  # stub claim where another returned six). require_parameters skips providers that don't support
+  # structured output or reasoning settings; list provider names in ignore to avoid them altogether.
+  provider:
+    require_parameters: true
+    ignore: []
+
+search:
+  # Tried in order. A provider/engine that fails (blocked, CAPTCHA, out of credits, down) is skipped for
+  # failure_cooldown_seconds and the next one is used. The moment one starts failing, and when it
+  # recovers, is recorded in the business_critical table of the logs database.
+  providers: ["serper", "searxng", "selenium"]    # also available: tavily, brave
+  failure_cooldown_seconds: 600
+  max_parallel: 2               # searches at once per worker; bursts trigger CAPTCHAs (restart worker to apply)
+  results_per_query: 5
+  max_queries_per_claim: 4
+  api_timeout_seconds: 20         # serper, tavily, brave and Google Fact Check requests
+  country: in
+  language: en
+  searxng:                        # self-hosted metasearch container (free)
+    url: "http://searxng:8080"
+    engines: ["google", "duckduckgo"]   # asked one at a time, in this order. Not bing: via SearXNG it
+                                        # silently returns results for the first word of the query only
+    timeout_seconds: 15
+  serper:
+    api_key: ""         # 2,500 free queries, then paid
+  tavily:
+    api_key: ""
+  brave:
+    api_key: ""
+  selenium:                       # last resort: headless Chromium in the worker scraping a results page
+    engines: ["duckduckgo", "bing", "google"]
+    page_timeout_seconds: 20
+
+factcheck:
+  google_api_key: ""              # Google Fact Check Tools API; empty = skip
+  language: en
+  max_results: 5
+
+verification:
+  official_sites: ["gov.in", "nic.in", "sci.gov.in", "eci.gov.in", "egazette.gov.in", "prsindia.org"]
+  factcheck_sites: ["pib.gov.in", "factcheck.pib.gov.in", "altnews.in", "boomlive.in", "factly.in", "newschecker.in"]
+  min_independent_sources: 2      # needed before a claim can be True or False
+  max_evidence: 12                # evidence kept from the first search round
+  research:                       # the verdict model can ask for follow-up searches built from what it found
+    max_rounds: 3                 # search rounds per claim, the first included (1 = no follow-ups)
+    queries_per_round: 2          # follow-up searches per round (each costs one search credit on paid providers)
+    new_evidence_per_round: 6     # new sources added per follow-up round
+  source_rankings_file: data/source_rankings.yaml   # relative to this file
+  default_rank: D
+
+ttl:                              # when a result expires, the next check moves it into history
+  breaking_hours: 12
+  ongoing_hours: 72
+  settled_hours: 720
+  default_hours: 72
+
+history:
+  max_entries: 0                  # 0 = keep every past result
+  keep_raw_text: false            # keep transcript/OCR text inside history entries
+
+creators:
+  min_sample: 5                   # checked claims before a creator's record is shown
+
+hero:
+  window_hours: 6
+
+retention:
+  jobs_days: 7
+  requests_days: 30
+  sweep_minutes: 60
+
+worker:
+  concurrency: 2
+  max_retries: 2
+  retry_backoff_seconds: [30, 120]
+
+logging:
+  level: info                     # debug | info | error
+  stdout: true
+  queue_key: "logs:events"
+  business_critical_key: "logs:business_critical"   # search-engine failures/recoveries
+  max_backlog: 100000
+  batch_size: 500
+  sqlite_path: /data/logs/varuna_logs.sqlite
+
+topics:                           # what varuna checks: used by the topic gate and as claim tags
+  - Delhi protests
+  - UGC bill
+  - UCC bill
+  - Elections
+  - Economy
+  - Health
+
+topic_gate:
+  # Before anything is downloaded, transcribed or searched, the reel's caption is checked against
+  # `topics` by the small model. Off-topic reels stop there (and don't use up the daily budget),
+  # so random content can't burn tokens. Shown on the public transparency page.
+  enabled: true
+  empty_caption: reject           # reels without a caption: reject | allow
+  max_caption_chars: 2000
+  remember_hours: 168             # a rejected reel isn't re-checked for this long, unless `topics` changes

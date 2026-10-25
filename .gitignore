@@ -1,0 +1,41 @@
+# secrets: config.yaml holds API keys, JWT secret, Google and Instagram credentials
+config.yaml
+config.*.yaml
+!config.example.yaml
+.env
+.env.*
+# yt-dlp cookies (downloader.yt_dlp.cookies_file) and instaloader sessions are logged-in Instagram credentials
+*cookies*.txt
+session-*
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# commercial font (Neue Haas Display), only used by the docs/index.html mockup; not licensed for redistribution
+frontend/fonts/
+
+# local data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.log
+
+# editor / tool settings
+.claude/settings.local.json
+.vscode/
+.idea/
+
+# reel video project: dependencies and generated media
+video/node_modules/
+video/.venv/
+video/out/
+video/public/audio/

@@ -1,0 +1,25 @@
+{
+  "name": "varuna-reel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Reel out/varuna-reel.mp4 --crf=21 --x264-preset=slow --audio-bitrate=256k",
+    "render:nomusic": "remotion render src/index.ts ReelNoMusic out/varuna-reel-no-music.mp4 --crf=21 --x264-preset=slow --audio-bitrate=256k",
+    "cover": "remotion still src/index.ts ReelSilent out/cover.png --frame=190",
+    "render:nonarration": "remotion render src/index.ts ReelNoNarration out/varuna-reel-no-narration.mp4 --crf=21 --x264-preset=slow --audio-bitrate=256k",
+    "avatar": "remotion still src/index.ts Avatar out/profile-picture.png && remotion still src/index.ts AvatarLight out/profile-picture-light.png",
+    "render:dussehra": "remotion render src/index.ts Dussehra out/varuna-reel-dussehra.mp4 --crf=21 --x264-preset=slow --audio-bitrate=256k",
+    "cover:dussehra": "remotion still src/index.ts DussehraSilent out/cover-dussehra.png --frame=425"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@remotion/cli": "^4.0.537",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.537",
+    "typescript": "^7.0.2"
+  }
+}

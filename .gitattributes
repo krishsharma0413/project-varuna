@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings to run on Linux; Windows batch files need CRLF.
+*.sh text eol=lf
+*.py text eol=lf
+*.cmd text eol=crlf

@@ -1,0 +1,42 @@
+[project]
+name = "varuna"
+version = "0.1.0"
+description = "varuna fact checker: reel fact-checking pipeline and API"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "pymongo>=4.13",
+    "redis>=5.2",
+    "httpx>=0.28",
+    "pyyaml>=6.0",
+    "pyjwt[crypto]>=2.10",
+    "instaloader>=4.14",
+    "yt-dlp>=2025.1.1",
+    "pillow>=11.0",
+    "imagehash>=4.3",
+    "selenium>=4.25",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.9",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["B008"]  # FastAPI's Depends() in argument defaults
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-p no:cacheprovider"
